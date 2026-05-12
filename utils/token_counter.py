@@ -15,15 +15,13 @@ class TokenCounterCallback(BaseCallbackHandler):
         self.successful_requests = 0
         self.lock = threading.Lock()
         
-        # 常见模型的价格配置 (单位: RMB / 1M tokens)
-        # 请根据实际使用的 API 价格进行调整
         self.pricing_rates = {
-            "xdf-gp-3.0": {"prompt": 10.0, "completion": 60.0}, # 示例价格
+            "xdf-gp-3.0": {"prompt": 10.0, "completion": 60.0},
             "deepseek-reasoner": {"prompt": 4.0, "completion": 16.0},
             "gpt-3.5-turbo": {"prompt": 3.5, "completion": 10.5},
             "gpt-4o": {"prompt": 35.0, "completion": 105.0},
             "gpt-4o-mini": {"prompt": 1.05, "completion": 4.2},
-            "minimax": {"prompt": 1.0, "completion": 1.0}, # 示例
+            "minimax": {"prompt": 1.0, "completion": 1.0},
         }
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
@@ -46,7 +44,6 @@ class TokenCounterCallback(BaseCallbackHandler):
         
     def calculate_cost(self, model_name: str = "deepseek-chat") -> float:
         """Calculate estimated cost based on token usage."""
-        # 尝试匹配模型名称
         rate = {"prompt": 0.0, "completion": 0.0}
         for key, val in self.pricing_rates.items():
             if key in model_name.lower():
@@ -61,7 +58,7 @@ class TokenCounterCallback(BaseCallbackHandler):
         """Print formatted statistics."""
         cost = self.calculate_cost(model_name)
         print("\n" + "="*40)
-        print("📊 API Token Usage & Cost Report")
+        print(" API Token Usage & Cost Report")
         print("="*40)
         print(f"Model:               {model_name}")
         print(f"Successful Requests: {self.successful_requests}")
@@ -69,7 +66,7 @@ class TokenCounterCallback(BaseCallbackHandler):
         print(f"Completion Tokens:   {self.total_completion_tokens:,}")
         print(f"Total Tokens:        {self.total_tokens:,}")
         print("-" * 40)
-        print(f"Estimated Cost:      ¥ {cost:.4f} RMB")
+        print(f"Estimated Cost:      RMB {cost:.4f} RMB")
         print("="*40 + "\n")
 
     def reset(self):
@@ -80,5 +77,4 @@ class TokenCounterCallback(BaseCallbackHandler):
             self.total_tokens = 0
             self.successful_requests = 0
 
-# 全局单例，方便在整个项目中共享统计
 global_token_counter = TokenCounterCallback()

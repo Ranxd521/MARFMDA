@@ -20,7 +20,7 @@ from data_loader.loader import DataLoader
 from agents.rwr_agent import RWRAgent
 from agents.similarity_agent import SimilarityAgent
 from agents.graph_agent import GraphAgent
-from config import get_llm
+from agents.config import get_llm
 from agents.workflow import create_workflow
 # from batch_predict import process_single_pair # Implemented async version locally
 

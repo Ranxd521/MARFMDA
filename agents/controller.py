@@ -1,8 +1,4 @@
-"""
-Controller Agent
-核心控制器，调度所有子 agent，整合结果，实现批处理单次LLM调用
-重构版本：批处理推理，单次LLM调用
-"""
+"""Controller agent for batch inference and result aggregation."""
 from typing import Dict, List, Optional, Tuple
 import sys
 import os
@@ -13,32 +9,20 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agents.similarity_agent import SimilarityAgent
 from agents.graph_agent import GraphAgent
 from agents.rwr_agent import RWRAgent
-from agents.web_agent import WebAgent
 from agents.fusion_agent import FusionAgent
-from agents.validation_agent import ValidationAgent
-from llm_client import llm_client
 
 
 class ControllerAgent:
-    """控制器 Agent - 批处理推理"""
+    """ControllerAgent."""
     
     def __init__(self, data_loader, max_refinement_iterations: int = 2, fast_mode: bool = False, ultra_fast: bool = False):
-        """
-        初始化 Controller Agent
-        
-        Args:
-            data_loader: DataLoader 实例
-            max_refinement_iterations: 最大重新推理迭代次数（批处理模式下不使用）
-            fast_mode: 快速模式，跳过RWR Agent
-            ultra_fast: 超快模式，只使用Graph Agent，跳过LLM调用
-        """
+        """  init  ."""
         self.data_loader = data_loader
         self.max_refinement_iterations = max_refinement_iterations
         self.fast_mode = fast_mode
         self.ultra_fast = ultra_fast
-        self.batch_size = 10  # 批处理大小
+        self.batch_size = 10
         
-        # 初始化所有子 Agent
         self.similarity_agent = SimilarityAgent(data_loader)
         self.graph_agent = GraphAgent(data_loader)
         self.rwr_agent = RWRAgent(data_loader)
@@ -58,26 +42,9 @@ class ControllerAgent:
         sim_features: Dict,
         web_features: Dict
     ) -> str:
-        """
-        生成详细、一致的解释文本
-        
-        Args:
-            final_score: 最终分数
-            sim_score: 相似度分数
-            graph_score: 图分数
-            rwr_score: RWR分数
-            web_score: Web分数
-            graph_features: 图特征
-            rwr_features: RWR特征
-            sim_features: 相似度特征
-            web_features: Web特征
-        
-        Returns:
-            详细的解释文本
-        """
+        """Controller agent for batch inference and result aggregation."""
         explanation_parts = []
         
-        # 提取特征值
         direct_link = graph_features.get("direct_link", 0)
         num_paths = graph_features.get("num_paths", 0)
         rwr_prob = rwr_features.get("rwr_probability", 0.0)
@@ -87,7 +54,6 @@ class ControllerAgent:
         disease_assoc = sim_features.get("disease_assoc_count", 0)
         evidence_level = web_features.get("evidence_level", "unknown")
         
-        # 1. 图证据描述（与graph_score一致，大幅增加多样性）
         import random
         if direct_link > 0:
             variants = [
@@ -145,7 +111,6 @@ class ControllerAgent:
             ]
             explanation_parts.append(random.choice(variants))
         
-        # 2. RWR证据描述（与rwr_score一致，大幅增加多样性）
         if rwr_prob > 1e-4:
             rank_pct = (rwr_rank / total_diseases * 100) if total_diseases > 0 else 100
             if rank_pct < 5:
@@ -204,7 +169,6 @@ class ControllerAgent:
             ]
             explanation_parts.append(random.choice(variants))
         
-        # 3. 相似度证据描述（与sim_score一致，大幅增加多样性）
         total_assoc = mirna_assoc + disease_assoc
         if total_assoc >= 5:
             variants = [
@@ -251,7 +215,6 @@ class ControllerAgent:
             ]
             explanation_parts.append(random.choice(variants))
         
-        # 4. Web证据描述（与web_score一致，增加多样性）
         if evidence_level == "strong":
             variants = [
                 "Strong evidence from knowledge base",
@@ -297,7 +260,6 @@ class ControllerAgent:
             ]
             explanation_parts.append(random.choice(variants))
         
-        # 5. 综合评估（与final_score一致，增加多样性）
         if final_score >= 0.8:
             variants = [
                 "Strong evidence supports association",
@@ -354,9 +316,7 @@ class ControllerAgent:
             ]
             conclusion = random.choice(variants)
         
-        # 组合解释（随机化连接方式）
         if explanation_parts:
-            # 随机选择连接方式
             connectors = [". ", "; ", ". Additionally, ", ". Furthermore, ", ". ", ". ", ". "]
             connector = random.choice(connectors)
             explanation = connector.join(explanation_parts) + f". {conclusion}."
@@ -366,32 +326,12 @@ class ControllerAgent:
         return explanation
     
     def predict(self, mirna_name: str, disease_name: str, verbose: bool = True) -> Dict:
-        """
-        单样本预测（兼容旧接口）
-        
-        Args:
-            mirna_name: miRNA 名称
-            disease_name: 疾病名称
-            verbose: 是否打印详细信息
-        
-        Returns:
-            包含完整预测结果的字典
-        """
-        # 单样本转为批处理
+        """Predict."""
         results = self.predict_batch([(mirna_name, disease_name)], verbose=verbose)
         return results[0] if results else {}
     
     def predict_batch(self, pairs: List[Tuple[str, str]], verbose: bool = False) -> List[Dict]:
-        """
-        批量预测（核心方法）
-        
-        Args:
-            pairs: miRNA-disease 对列表 [(mirna_name, disease_name), ...]
-            verbose: 是否打印详细信息
-        
-        Returns:
-            预测结果列表
-        """
+        """Predict batch."""
         if verbose:
             print(f"\n{'='*60}")
             print(f"Batch Prediction: {len(pairs)} pairs")
@@ -399,11 +339,9 @@ class ControllerAgent:
         
         all_results = []
         
-        # 超快模式：使用简单启发式，不调用LLM
         if self.ultra_fast:
             return self._ultra_fast_predict(pairs, verbose)
         
-        # 分批处理
         for batch_start in range(0, len(pairs), self.batch_size):
             batch_end = min(batch_start + self.batch_size, len(pairs))
             batch_pairs = pairs[batch_start:batch_end]
@@ -411,24 +349,13 @@ class ControllerAgent:
             if verbose:
                 print(f"Processing batch {batch_start//self.batch_size + 1}/{(len(pairs)-1)//self.batch_size + 1}")
             
-            # 批处理推理
             batch_results = self._process_batch(batch_pairs, verbose)
             all_results.extend(batch_results)
         
         return all_results
     
     def _process_batch(self, batch_pairs: List[Tuple[str, str]], verbose: bool = False) -> List[Dict]:
-        """
-        处理一个批次的样本
-        
-        Args:
-            batch_pairs: 一批miRNA-disease对
-            verbose: 是否打印详细信息
-        
-        Returns:
-            批次预测结果
-        """
-        # 1. 获取索引并过滤无效样本
+        """ process batch."""
         valid_samples = []
         for mirna_name, disease_name in batch_pairs:
             mirna_idx = self.data_loader.get_miRNA_index(mirna_name)
@@ -447,7 +374,6 @@ class ControllerAgent:
         if not valid_samples:
             return []
         
-        # 2. 并行提取所有样本的特征（4个Agent并行）
         all_evidences = []
         for sample in valid_samples:
             evidences = self._extract_features_parallel(sample["mirna_idx"], sample["disease_idx"], verbose)
@@ -456,10 +382,8 @@ class ControllerAgent:
                 "evidences": evidences
             })
             
-        # 3. 可选：测试集过滤（过滤掉明显的负样本）
         filtered_samples, filtered_out_samples = self._filter_samples_with_tracking(all_evidences)
         
-        # 4. 对被过滤的样本分配默认低分
         filtered_out_results = []
         for ev in filtered_out_samples:
             filtered_out_results.append({
@@ -467,7 +391,7 @@ class ControllerAgent:
                 "disease_name": ev["sample"]["disease_name"],
                 "mirna_idx": ev["sample"]["mirna_idx"],
                 "disease_idx": ev["sample"]["disease_idx"],
-                "final_score": 0.15,  # 被过滤样本给低分
+                "final_score": 0.15,
                 "prediction": "NOT_ASSOCIATED",
                 "confidence": "HIGH",
                 "individual_agent_results": {
@@ -481,20 +405,16 @@ class ControllerAgent:
                 "refinement_iterations": 0
             })
         
-        # 如果所有样本都被过滤，直接返回过滤结果
         if not filtered_samples:
             return filtered_out_results
         
-        # 5. 构建批处理prompt（只对未过滤样本）
         batch_prompt = self._build_batch_prompt(filtered_samples)
         
-        # 6. 单次LLM调用
         if verbose:
             print(f"Calling LLM for batch inference ({len(filtered_samples)}/{len(all_evidences)} samples)...")
         
         llm_response = llm_client.ask(batch_prompt, temperature=0.2)
         
-        # Debug: 保存完整响应（可选）
         if os.getenv("DEBUG_LLM_RESPONSE", "0") == "1":
             with open("llm_response_debug.txt", "a", encoding='utf-8') as f:
                 f.write("\n" + "="*80 + "\n")
@@ -503,14 +423,12 @@ class ControllerAgent:
                 f.write(llm_response)
                 f.write("\n")
         
-        # 7. 解析LLM输出（如果失败，使用启发式方法）
         try:
             batch_results = self._parse_llm_response(filtered_samples, llm_response, verbose)
         except Exception as e:
             if verbose:
                 print(f"Warning: Failed to parse LLM response: {e}")
                 print(f"Response preview: {llm_response[:200]}...")
-            # 使用启发式方法为所有样本生成结果
             batch_results = []
             for ev in filtered_samples:
                 sample = ev["sample"]
@@ -518,34 +436,21 @@ class ControllerAgent:
                 heuristic_result = self._generate_heuristic_result_for_sample(sample, evidences)
                 batch_results.append(heuristic_result)
         
-        # 8. 合并未过滤样本和被过滤样本的结果
         all_results = batch_results + filtered_out_results
         
         return all_results
     
     def _extract_features_parallel(self, mirna_idx: int, disease_idx: int, verbose: bool = False) -> Dict:
-        """
-        并行提取4个Agent的特征
-        
-        Args:
-            mirna_idx: miRNA索引
-            disease_idx: 疾病索引
-            verbose: 是否打印详细信息
-        
-        Returns:
-            所有Agent的特征字典
-        """
+        """ extract features parallel."""
         agents_to_run = [
             ("similarity", self.similarity_agent, mirna_idx, disease_idx),
             ("graph", self.graph_agent, mirna_idx, disease_idx),
             ("web", self.web_agent, mirna_idx, disease_idx)
         ]
         
-        # 快速模式下跳过RWR
         if not self.fast_mode:
             agents_to_run.append(("rwr", self.rwr_agent, mirna_idx, disease_idx))
         
-        # 并行执行
         results = {}
         with ThreadPoolExecutor(max_workers=len(agents_to_run)) as executor:
             future_to_agent = {
@@ -570,22 +475,13 @@ class ControllerAgent:
         return results
     
     def _filter_samples_with_tracking(self, all_evidences: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
-        """
-        过滤测试集样本（带跟踪，返回过滤和未过滤的样本）
-        
-        Args:
-            all_evidences: 所有样本的证据列表
-        
-        Returns:
-            (filtered_samples, filtered_out_samples) 元组
-        """
+        """ filter samples with tracking."""
         filtered = []
         filtered_out = []
         
         for ev in all_evidences:
             evidences = ev["evidences"]
             
-            # 提取特征
             graph_features = evidences.get("graph", {}).get("features", {})
             rwr_features = evidences.get("rwr", {}).get("features", {})
             sim_features = evidences.get("similarity", {}).get("features", {})
@@ -596,13 +492,11 @@ class ControllerAgent:
             mirna_assoc = sim_features.get("mirna_assoc_count", 0)
             disease_assoc = sim_features.get("disease_assoc_count", 0)
             
-            # 更宽松的过滤条件：只过滤完全没有证据的样本
             if (direct_link == 0 and 
                 num_paths == 0 and 
                 rwr_prob < 1e-8 and 
                 mirna_assoc == 0 and 
                 disease_assoc == 0):
-                # 即使过滤掉，也保留一部分（10%的概率）以避免过度过滤
                 import random
                 if random.random() < 0.1:
                     filtered.append(ev)
@@ -611,49 +505,32 @@ class ControllerAgent:
             else:
                 filtered.append(ev)
         
-        # 给出统计信息
         if len(filtered_out) > 0:
             print(f"  Filtered out {len(filtered_out)}/{len(all_evidences)} samples with no evidence")
         
         return filtered, filtered_out
     
     def _generate_heuristic_result_for_sample(self, sample: Dict, evidences: Dict) -> Dict:
-        """
-        为单个样本生成启发式结果（当LLM解析失败时使用）
-        
-        Args:
-            sample: 样本信息
-            evidences: 所有Agent的证据
-        
-        Returns:
-            结果字典
-        """
-        # 提取所有特征
+        """ generate heuristic result for sample."""
         graph_features = evidences.get("graph", {}).get("features", {})
         rwr_features = evidences.get("rwr", {}).get("features", {})
         sim_features = evidences.get("similarity", {}).get("features", {})
         web_features = evidences.get("web", {}).get("features", {})
         
-        # 图特征
         has_direct_link = graph_features.get("direct_link", 0) > 0
         num_paths = graph_features.get("num_paths", 0)
         mean_strength = graph_features.get("mean_strength", 0.0)
         
-        # RWR特征
         rwr_prob = rwr_features.get("rwr_probability", 0.0)
         rwr_rank = rwr_features.get("rank", 9999)
         total_diseases = rwr_features.get("total_diseases", 2077)
         
-        # 相似度特征
         mirna_assoc = sim_features.get("mirna_assoc_count", 0)
         disease_assoc = sim_features.get("disease_assoc_count", 0)
         total_assoc = mirna_assoc + disease_assoc
         
-        # Web特征
         evidence_level = web_features.get("evidence_level", "unknown")
         
-        # 启发式评分
-        # 1. 图证据（权重40%）
         if has_direct_link:
             graph_score = 0.95
         elif num_paths > 10:
@@ -667,7 +544,6 @@ class ControllerAgent:
         else:
             graph_score = 0.15
         
-        # 2. RWR证据（权重25%）
         if rwr_prob > 1e-3:
             rwr_score = 0.90
         elif rwr_prob > 1e-4:
@@ -686,7 +562,6 @@ class ControllerAgent:
             else:
                 rwr_score = 0.25
         
-        # 3. 相似度证据（权重25%）
         if total_assoc >= 10:
             sim_score = 0.90
         elif total_assoc >= 6:
@@ -698,7 +573,6 @@ class ControllerAgent:
         else:
             sim_score = 0.30
         
-        # 4. Web证据（权重10%）
         if evidence_level == "strong":
             web_score = 0.90
         elif evidence_level == "moderate":
@@ -706,11 +580,9 @@ class ControllerAgent:
         else:
             web_score = 0.30
         
-        # 综合评分
         final_score = graph_score * 0.40 + rwr_score * 0.25 + sim_score * 0.25 + web_score * 0.10
         final_score = max(0.15, min(0.95, final_score))
         
-        # 预测和置信度
         if final_score >= 0.7:
             prediction = "ASSOCIATED"
             confidence = "HIGH" if final_score >= 0.85 else "MODERATE"
@@ -721,7 +593,6 @@ class ControllerAgent:
             prediction = "NOT_ASSOCIATED"
             confidence = "HIGH"
         
-        # 生成解释
         explanation = self._generate_detailed_explanation(
             final_score, sim_score, graph_score, rwr_score, web_score,
             graph_features, rwr_features, sim_features, web_features
@@ -749,28 +620,12 @@ class ControllerAgent:
         }
     
     def _filter_samples(self, all_evidences: List[Dict]) -> List[Dict]:
-        """
-        过滤测试集样本（可选，现在默认不过滤以保留更多样本）
-        
-        Args:
-            all_evidences: 所有样本的证据列表
-        
-        Returns:
-            过滤后的样本列表
-        """
+        """ filter samples."""
         filtered, _ = self._filter_samples_with_tracking(all_evidences)
         return filtered
     
     def _build_batch_prompt(self, filtered_samples: List[Dict]) -> str:
-        """
-        构建批处理prompt
-        
-        Args:
-            filtered_samples: 过滤后的样本列表
-        
-        Returns:
-            批处理prompt字符串
-        """
+        """ build batch prompt."""
         prompt = """You are an AI expert in miRNA-disease association prediction. Analyze the following batch of samples and predict association scores.
 
 THINK STEP BY STEP (Chain of Thought Reasoning):
@@ -803,22 +658,22 @@ Step 4: Analyze Literature/Web Evidence
 Step 5: Synthesize All Evidence
 - Combine evidence from all four sources
 - Apply weighting: graph (40%), RWR (25%), similarity (25%), web (10%)
-- Consider evidence consistency: multiple strong sources → boost final_score by +0.15
+- Consider evidence consistency: multiple strong sources -> boost final_score by +0.15
 - Determine final_score: strong evidence (0.75-0.95), moderate (0.55-0.75), weak (0.35-0.55), no evidence (0.10-0.35)
 
 Step 6: Make Final Decision
-- Based on final_score, determine label: >=0.7 → ASSOCIATED, <0.7 → NOT_ASSOCIATED
+- Based on final_score, determine label: >=0.7 -> ASSOCIATED, <0.7 -> NOT_ASSOCIATED
 - Assess confidence: HIGH (|score - 0.5| > 0.3), MODERATE (|score - 0.5| > 0.15), LOW (otherwise)
 - Write explanation that reflects the reasoning process and evidence synthesis
 
 IMPORTANT SCORING GUIDELINES:
-1. Direct link exists → graph_score >= 0.90, final_score >= 0.80
-2. Multiple indirect paths (>5) → graph_score >= 0.75, final_score >= 0.70
-3. Few paths (1-5) → graph_score >= 0.60, final_score >= 0.55
-4. High RWR probability (>1e-4) → rwr_score >= 0.75
-5. High RWR rank (top 10%) → rwr_score >= 0.65
-6. Strong similarity associations (>=3) → sim_score >= 0.70
-7. Multiple evidence sources (>=2 strong) → final_score += 0.15
+1. Direct link exists -> graph_score >= 0.90, final_score >= 0.80
+2. Multiple indirect paths (>5) -> graph_score >= 0.75, final_score >= 0.70
+3. Few paths (1-5) -> graph_score >= 0.60, final_score >= 0.55
+4. High RWR probability (>1e-4) -> rwr_score >= 0.75
+5. High RWR rank (top 10%) -> rwr_score >= 0.65
+6. Strong similarity associations (>=3) -> sim_score >= 0.70
+7. Multiple evidence sources (>=2 strong) -> final_score += 0.15
 
 SCORE RANGES:
 - Strong evidence (direct link OR multiple paths OR high RWR): final_score 0.75-0.95
@@ -854,7 +709,6 @@ Evidence for each sample:
             prompt += f"\n--- Sample {idx} ---\n"
             prompt += f"miRNA: {sample['mirna_name']}, Disease: {sample['disease_name']}\n"
             
-            # 添加每个Agent的文本证据
             for agent_name in ["similarity", "graph", "rwr", "web"]:
                 if agent_name in evidences:
                     text_evidence = evidences[agent_name].get("text_evidence", "N/A")
@@ -881,42 +735,25 @@ Output:"""
         return prompt
     
     def _parse_llm_response(self, filtered_samples: List[Dict], llm_response: str, verbose: bool = False) -> List[Dict]:
-        """
-        解析LLM返回的JSON
-        
-        Args:
-            filtered_samples: 过滤后的样本列表
-            llm_response: LLM返回的文本
-            verbose: 是否打印详细信息
-        
-        Returns:
-            解析后的结果列表
-        """
+        """ parse llm response."""
         try:
-            # 改进的JSON提取逻辑 - 处理各种格式
             import re
             
-            # 原始响应
             cleaned_response = llm_response
             
-            # 步骤1：移除markdown代码块标记
-            # 查找```json标记
             if '```json' in cleaned_response:
                 start_idx = cleaned_response.find('```json')
-                cleaned_response = cleaned_response[start_idx + 7:]  # 跳过'```json'
+                cleaned_response = cleaned_response[start_idx + 7:]
             elif '```' in cleaned_response:
-                # 可能只有```标记
                 start_idx = cleaned_response.find('```')
-                cleaned_response = cleaned_response[start_idx + 3:]  # 跳过'```'
+                cleaned_response = cleaned_response[start_idx + 3:]
             
-            # 移除结尾的```标记
             if '```' in cleaned_response:
                 end_idx = cleaned_response.find('```')
                 cleaned_response = cleaned_response[:end_idx]
             
             cleaned_response = cleaned_response.strip()
             
-            # 步骤2：查找JSON数组
             json_start = cleaned_response.find('[')
             json_end = cleaned_response.rfind(']')
             
@@ -928,14 +765,11 @@ Output:"""
             
             json_str = cleaned_response[json_start:json_end+1]
             
-            # 尝试解析JSON（处理可能被截断的情况）
             try:
                 llm_results = json.loads(json_str)
             except json.JSONDecodeError as json_err:
-                # JSON可能被截断，尝试修复
                 if verbose:
                     print(f"Warning: JSON decode error, attempting to fix: {json_err}")
-                # 尝试在最后一个完整对象处截断
                 last_complete = json_str.rfind('},')
                 if last_complete > 0:
                     try:
@@ -952,17 +786,14 @@ Output:"""
             if verbose:
                 print(f"Successfully parsed {len(llm_results)} results from LLM")
             
-            # 构建最终结果（为所有样本创建结果，即使LLM没有返回）
             final_results = []
             
-            # 创建ID到LLM结果的映射
             llm_results_map = {r.get("id", -1): r for r in llm_results if isinstance(r, dict)}
             
             for idx, ev in enumerate(filtered_samples):
                 sample = ev["sample"]
                 evidences = ev["evidences"]
                 
-                # 获取LLM结果（如果存在）
                 llm_result = llm_results_map.get(idx, None)
                 
                 if llm_result:
@@ -974,8 +805,6 @@ Output:"""
                     rwr_score = float(llm_result.get("rwr_score", 0.5))
                     web_score = float(llm_result.get("web_score", 0.5))
                     
-                    # 使用新的详细解释生成函数，而不是LLM的简短解释
-                    # 这样可以确保解释与分数一致，且更详细
                     explanation = self._generate_detailed_explanation(
                         final_score, sim_score, graph_score, rwr_score, web_score,
                         evidences.get("graph", {}).get("features", {}),
@@ -984,7 +813,6 @@ Output:"""
                         evidences.get("web", {}).get("features", {})
                     )
                 else:
-                    # 使用改进的启发式方法作为后备
                     graph_features = evidences.get("graph", {}).get("features", {})
                     rwr_features = evidences.get("rwr", {}).get("features", {})
                     sim_features = evidences.get("similarity", {}).get("features", {})
@@ -995,7 +823,6 @@ Output:"""
                     mirna_assoc = sim_features.get("mirna_assoc_count", 0)
                     disease_assoc = sim_features.get("disease_assoc_count", 0)
                     
-                    # 改进的快速启发式评分
                     total_assoc = mirna_assoc + disease_assoc
                     
                     if has_direct_link:
@@ -1033,7 +860,6 @@ Output:"""
                     rwr_score = 0.6 if rwr_prob > 1e-5 else 0.3
                     web_score = 0.4
                     
-                    # 生成详细解释
                     explanation = self._generate_detailed_explanation(
                         final_score, sim_score, graph_score, rwr_score, web_score,
                         graph_features, rwr_features, sim_features, 
@@ -1071,64 +897,54 @@ Output:"""
             return final_results
         
         except Exception as e:
-            if verbose or True:  # 总是显示错误
+            if verbose or True:
                 print(f"Error parsing LLM response: {e}")
                 print(f"Response preview: {llm_response[:300]}...")
                 import traceback
                 traceback.print_exc()
             
-            # 使用改进的启发式方法作为完全后备
             final_results = []
             for ev in filtered_samples:
                 sample = ev["sample"]
                 evidences = ev["evidences"]
                 
-                # 提取所有特征
                 graph_features = evidences.get("graph", {}).get("features", {})
                 rwr_features = evidences.get("rwr", {}).get("features", {})
                 sim_features = evidences.get("similarity", {}).get("features", {})
                 web_features = evidences.get("web", {}).get("features", {})
                 
-                # 图特征
                 has_direct_link = graph_features.get("direct_link", 0) > 0
                 num_paths = graph_features.get("num_paths", 0)
                 max_strength = graph_features.get("max_strength", 0.0)
                 mean_strength = graph_features.get("mean_strength", 0.0)
                 
-                # RWR特征
                 rwr_prob = rwr_features.get("rwr_probability", 0.0)
                 rwr_rank = rwr_features.get("rank", 9999)
                 total_diseases = rwr_features.get("total_diseases", 2077)
                 
-                # 相似度特征
                 mirna_assoc = sim_features.get("mirna_assoc_count", 0)
                 disease_assoc = sim_features.get("disease_assoc_count", 0)
                 top_mirna_sim = sim_features.get("top_mirna_sim", 0.0)
                 top_disease_sim = sim_features.get("top_disease_sim", 0.0)
                 
-                # Web/知识库特征
                 evidence_level = web_features.get("evidence_level", "unknown")
                 
-                # 改进的启发式评分 - 综合多个证据源
                 final_score = 0.0
                 
-                # 1. 图证据（权重40%）- 大幅提升有证据样本的分数
                 graph_score = 0.0
                 if has_direct_link:
-                    graph_score = 0.95  # 直接链接是最强证据
+                    graph_score = 0.95
                 elif num_paths > 10:
-                    graph_score = 0.85  # 很多间接路径
+                    graph_score = 0.85
                 elif num_paths > 5:
                     graph_score = 0.75
                 elif num_paths > 2:
                     graph_score = 0.65
                 elif num_paths > 0:
-                    # 考虑路径强度
                     graph_score = 0.55 + min(0.15, mean_strength)
                 else:
                     graph_score = 0.15
                 
-                # 2. RWR证据（权重25%）- 提升分数
                 rwr_score = 0.0
                 if rwr_prob > 1e-3:
                     rwr_score = 0.90
@@ -1139,20 +955,18 @@ Output:"""
                 elif rwr_prob > 1e-6:
                     rwr_score = 0.50
                 else:
-                    # 基于排名
-                    if rwr_rank < total_diseases * 0.05:  # 前5%
+                    if rwr_rank < total_diseases * 0.05:
                         rwr_score = 0.80
-                    elif rwr_rank < total_diseases * 0.10:  # 前10%
+                    elif rwr_rank < total_diseases * 0.10:
                         rwr_score = 0.65
-                    elif rwr_rank < total_diseases * 0.20:  # 前20%
+                    elif rwr_rank < total_diseases * 0.20:
                         rwr_score = 0.50
                     else:
                         rwr_score = 0.25
                 
-                # 3. 相似度证据（权重25%）- 提升分数
                 sim_score = 0.0
                 total_assoc = mirna_assoc + disease_assoc
-                if total_assoc >= 10:  # 很强的相似度关联
+                if total_assoc >= 10:
                     sim_score = 0.90
                 elif total_assoc >= 6:
                     sim_score = 0.80
@@ -1161,11 +975,9 @@ Output:"""
                 elif total_assoc >= 1:
                     sim_score = 0.60
                 else:
-                    # 考虑相似度本身（给予更高权重）
                     avg_sim = (top_mirna_sim + top_disease_sim) / 2.0
-                    sim_score = 0.3 + avg_sim * 0.5  # 0.3-0.8范围
+                    sim_score = 0.3 + avg_sim * 0.5
                 
-                # 4. Web/知识库证据（权重10%）
                 web_score = 0.0
                 if evidence_level == "strong":
                     web_score = 0.9
@@ -1174,7 +986,6 @@ Output:"""
                 else:
                     web_score = 0.3
                 
-                # 加权融合
                 final_score = (
                     graph_score * 0.40 +
                     rwr_score * 0.25 +
@@ -1182,16 +993,14 @@ Output:"""
                     web_score * 0.10
                 )
                 
-                # 如果有多个强证据，大幅提升分数
                 strong_evidence_count = sum([
                     has_direct_link,
-                    num_paths > 3,      # 降低阈值
-                    rwr_prob > 1e-5,    # 降低阈值
-                    total_assoc >= 2,   # 降低阈值
+                    num_paths > 3,
+                    rwr_prob > 1e-5,
+                    total_assoc >= 2,
                     evidence_level == "strong"
                 ])
                 
-                # 更激进的提升策略
                 if strong_evidence_count >= 3:
                     final_score = min(0.95, final_score + 0.20)
                 elif strong_evidence_count >= 2:
@@ -1199,10 +1008,8 @@ Output:"""
                 elif strong_evidence_count >= 1:
                     final_score = min(0.85, final_score + 0.10)
                 
-                # 确保分数在合理范围
                 final_score = max(0.05, min(0.95, final_score))
                 
-                # 判断关联和置信度
                 if final_score >= 0.7:
                     prediction = "ASSOCIATED"
                     confidence = "HIGH"
@@ -1213,13 +1020,11 @@ Output:"""
                     prediction = "NOT_ASSOCIATED"
                     confidence = "HIGH"
                 
-                # 计算各agent分数用于解释生成
                 graph_features = evidences.get("graph", {}).get("features", {})
                 rwr_features = evidences.get("rwr", {}).get("features", {})
                 sim_features = evidences.get("similarity", {}).get("features", {})
                 web_features = evidences.get("web", {}).get("features", {})
                 
-                # 从特征计算分数（用于解释生成）
                 sim_score_ex = 0.7 if (sim_features.get("mirna_assoc_count", 0) + sim_features.get("disease_assoc_count", 0)) >= 3 else 0.5
                 graph_score_ex = 0.9 if graph_features.get("direct_link", 0) > 0 else (0.7 if graph_features.get("num_paths", 0) > 5 else 0.5)
                 rwr_score_ex = 0.7 if rwr_features.get("rwr_probability", 0.0) > 1e-4 else 0.4
@@ -1261,16 +1066,7 @@ Output:"""
             return final_results
     
     def _ultra_fast_predict(self, pairs: List[Tuple[str, str]], verbose: bool = False) -> List[Dict]:
-        """
-        超快模式：使用改进的启发式，不调用LLM
-        
-        Args:
-            pairs: miRNA-disease对列表
-            verbose: 是否打印详细信息
-        
-        Returns:
-            预测结果列表
-        """
+        """ ultra fast predict."""
         results = []
         for mirna_name, disease_name in pairs:
             mirna_idx = self.data_loader.get_miRNA_index(mirna_name)
@@ -1279,35 +1075,27 @@ Output:"""
             if mirna_idx is None or disease_idx is None:
                 continue
             
-            # 提取所有特征（并行）
             evidences = self._extract_features_parallel(mirna_idx, disease_idx, verbose=False)
             
-            # 提取特征
             graph_features = evidences.get("graph", {}).get("features", {})
             rwr_features = evidences.get("rwr", {}).get("features", {})
             sim_features = evidences.get("similarity", {}).get("features", {})
             web_features = evidences.get("web", {}).get("features", {})
             
-            # 图特征
             direct_link = graph_features.get("direct_link", 0)
             num_paths = graph_features.get("num_paths", 0)
             mean_strength = graph_features.get("mean_strength", 0.0)
             
-            # RWR特征
             rwr_prob = rwr_features.get("rwr_probability", 0.0)
             rwr_rank = rwr_features.get("rank", 9999)
             total_diseases = rwr_features.get("total_diseases", 2077)
             
-            # 相似度特征
             mirna_assoc = sim_features.get("mirna_assoc_count", 0)
             disease_assoc = sim_features.get("disease_assoc_count", 0)
             total_assoc = mirna_assoc + disease_assoc
             
-            # Web特征
             evidence_level = web_features.get("evidence_level", "unknown")
             
-            # 改进的启发式评分（与完全后备方法一致）
-            # 1. 图证据
             if direct_link > 0:
                 graph_score = 0.95
             elif num_paths > 10:
@@ -1321,7 +1109,6 @@ Output:"""
             else:
                 graph_score = 0.15
             
-            # 2. RWR证据
             if rwr_prob > 1e-3:
                 rwr_score = 0.90
             elif rwr_prob > 1e-4:
@@ -1335,7 +1122,6 @@ Output:"""
             else:
                 rwr_score = 0.25
             
-            # 3. 相似度证据
             if total_assoc >= 10:
                 sim_score = 0.90
             elif total_assoc >= 6:
@@ -1347,10 +1133,8 @@ Output:"""
             else:
                 sim_score = 0.30
             
-            # 4. Web证据
             web_score = 0.9 if evidence_level == "strong" else (0.6 if evidence_level == "moderate" else 0.3)
             
-            # 加权融合
             score = (
                 graph_score * 0.40 +
                 rwr_score * 0.25 +
@@ -1358,7 +1142,6 @@ Output:"""
                 web_score * 0.10
             )
             
-            # 多证据奖励
             strong_evidence_count = sum([
                 direct_link > 0,
                 num_paths > 3,
@@ -1374,7 +1157,6 @@ Output:"""
             elif strong_evidence_count >= 1:
                 score = min(0.85, score + 0.10)
             
-            # 确保分数范围
             score = max(0.05, min(0.95, score))
             
             prediction = "ASSOCIATED" if score >= 0.7 else "NOT_ASSOCIATED"
@@ -1385,7 +1167,6 @@ Output:"""
             else:
                 confidence = "LOW"
             
-            # 计算各agent分数
             sim_score_val = 0.7 if total_assoc >= 3 else (0.5 if total_assoc >= 1 else 0.3)
             graph_score_val = 0.95 if direct_link > 0 else (0.75 if num_paths > 5 else (0.6 if num_paths > 0 else 0.3))
             rwr_score_val = 0.7 if rwr_prob > 1e-4 else (0.5 if rwr_prob > 1e-6 else 0.3)

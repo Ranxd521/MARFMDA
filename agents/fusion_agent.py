@@ -13,7 +13,7 @@ from langchain_core.output_parsers import StrOutputParser
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import get_llm
+from agents.config import get_llm
 from agents.state import AgentState
 
 class FusionAgent:
@@ -25,7 +25,6 @@ class FusionAgent:
         self.data_loader = data_loader
     
     def prepare_evidence(self, agent_results: List[Dict], mirna_name: str, disease_name: str) -> Dict:
-        # 提取各 Agent 的特征和文本证据
         all_features = {}
         text_evidences = []
         
@@ -36,7 +35,6 @@ class FusionAgent:
             if text_evidence:
                 text_evidences.append(f"{agent_name.capitalize()}: {text_evidence}")
         
-        # 可选：执行启发式提前判断
         heuristic_result = self._heuristic_judgment(all_features)
         
         return {
@@ -49,20 +47,16 @@ class FusionAgent:
         }
     
     def _heuristic_judgment(self, all_features: Dict[str, Dict]) -> Dict:
-        # 检查是否有直接链接（强证据）
         graph_features = all_features.get("graph", {})
         has_direct_link = graph_features.get("direct_link", 0) > 0
         
-        # 检查RWR概率
         rwr_features = all_features.get("rwr", {})
         rwr_prob = rwr_features.get("rwr_probability", 0.0)
         
-        # 检查相似度证据
         sim_features = all_features.get("similarity", {})
         mirna_assoc = sim_features.get("mirna_assoc_count", 0)
         disease_assoc = sim_features.get("disease_assoc_count", 0)
         
-        # 启发式规则
         if has_direct_link:
             return {"can_skip_llm": True, "suggested_score": 0.9, "reason": "Direct link exists"}
         elif mirna_assoc == 0 and disease_assoc == 0 and rwr_prob < 1e-6:

@@ -18,7 +18,6 @@ def main():
     
     print(f"Found {len(pos_samples)} positives and {len(neg_samples)} negatives.")
     
-    # 统计原数据集的疾病分布作为采样权重依据
     disease_pos_counts = {}
     disease_neg_counts = {}
     for p in pos_samples:
@@ -26,12 +25,10 @@ def main():
     for n in neg_samples:
         disease_neg_counts[n['disease']] = disease_neg_counts.get(n['disease'], 0) + 1
 
-    # 按原数据集的疾病比例分配目标采样数 (500)
     def sample_proportionally(samples, category_counts, target_total):
         sampled = []
         total_in_population = sum(category_counts.values())
         
-        # 将样本按疾病分类
         categorized_samples = {}
         for s in samples:
             d = s['disease']
@@ -40,16 +37,13 @@ def main():
             categorized_samples[d].append(s)
             
         remaining_target = target_total
-        # 按比例计算理论采样数并随机采样
         for d, count in sorted(category_counts.items(), key=lambda x: x[1], reverse=True):
             if remaining_target <= 0:
                 break
                 
-            # 计算该疾病应分得的配额
             proportion = count / total_in_population
             quota = min(int(round(proportion * target_total)), remaining_target, len(categorized_samples[d]))
             
-            # 如果配额计算为0但总量未满且该类别有余量，至少给1个
             if quota == 0 and remaining_target > 0 and len(categorized_samples[d]) > 0:
                  quota = 1
                  
@@ -57,9 +51,7 @@ def main():
                 sampled.extend(random.sample(categorized_samples[d], quota))
                 remaining_target -= quota
 
-        # 如果因为取整导致采样不足 target_total，随机补齐
         if len(sampled) < target_total:
-            # 找到还没被选中的样本
             sampled_ids = {f"{s['mirna']}_{s['disease']}" for s in sampled}
             remaining_pool = [s for s in samples if f"{s['mirna']}_{s['disease']}" not in sampled_ids]
             needed = target_total - len(sampled)

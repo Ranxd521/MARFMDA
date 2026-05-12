@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 # Add project root to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import get_llm
+from agents.config import get_llm
 from agents.state import AgentState
 
 # Define the expected JSON output structure

@@ -36,7 +36,7 @@ from agents.similarity_agent import SimilarityAgent
 from agents.graph_agent import GraphAgent
 
 try:
-    from config import get_llm
+    from agents.config import get_llm
 except ImportError:
     get_llm = None
 
