@@ -67,14 +67,7 @@ dataset/test_set_boosted.json
 Evaluate prediction results:
 
 ```bash
-python evaluation/evaluate.py --results results/hybrid_full_scores_gpt1.json
+python evaluation/evaluate.py --results results/*.json
 ```
 
-## Output
 
-The main experiment saves results under `results/`:
-
-```text
-results/hybrid_full_scores_gpt1.json
-results/hybrid_assessment_results.json
-```
