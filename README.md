@@ -1,6 +1,5 @@
 # MARFMDA
 
-MARFMDA is a multi-agent LLM-assisted framework for miRNA-disease association prediction.
 
 ## Environment
 
