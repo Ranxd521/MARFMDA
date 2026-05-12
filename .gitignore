@@ -21,10 +21,6 @@ results/
 logs/
 *.log
 
-# Large local datasets
-dataset/*
-!dataset/.gitkeep
-
 # OS/editor files
 .DS_Store
 Thumbs.db
